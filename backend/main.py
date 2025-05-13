@@ -1,4 +1,3 @@
-
 from fastapi import FastAPI, UploadFile, File, Form, Depends, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
@@ -13,8 +12,8 @@ import secrets
 
 app = FastAPI()
 
-UPLOAD_DIR = "uploaded_code"
-STYLE_PROFILE_PATH = "style_profiles.json"
+UPLOAD_DIR = "/tmp/uploaded_code"  # Carpeta temporal permitida por Vercel
+STYLE_PROFILE_PATH = "/tmp/style_profiles.json"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 openai.api_key = os.getenv("OPENAI_API_KEY")
@@ -44,12 +43,14 @@ def save_profile(project: str, profile: dict):
     with open(STYLE_PROFILE_PATH, "w") as f:
         json.dump(profiles, f, indent=2)
 
-@app.post("/upload")
+@app.post("/api/upload")
 async def upload_repo(file: UploadFile = File(...), username: str = Depends(authenticate)):
     project_name = file.filename.replace(".zip", "")
-    project_dir = Path(UPLOAD_DIR) / username / project_name
-    file_location = Path(UPLOAD_DIR) / file.filename
+    user_dir = Path(UPLOAD_DIR) / username
+    project_dir = user_dir / project_name
+    file_location = user_dir / file.filename
     os.makedirs(project_dir, exist_ok=True)
+    os.makedirs(user_dir, exist_ok=True)
 
     with open(file_location, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
@@ -95,7 +96,7 @@ async def upload_repo(file: UploadFile = File(...), username: str = Depends(auth
 
     return JSONResponse({"message": "File uploaded but not a zip."})
 
-@app.get("/analyze/{project_name}")
+@app.get("/api/analyze/{project_name}")
 def analyze_code(project_name: str, username: str = Depends(authenticate)):
     profiles = load_profiles()
     profile = profiles.get(f"{username}:{project_name}")
@@ -103,7 +104,7 @@ def analyze_code(project_name: str, username: str = Depends(authenticate)):
         return JSONResponse(status_code=404, content={"error": "Profile not found"})
     return profile
 
-@app.post("/suggest")
+@app.post("/api/suggest")
 def suggest_code(feature: str = Form(...), project: str = Form(...), username: str = Depends(authenticate)):
     profiles = load_profiles()
     profile = profiles.get(f"{username}:{project}")
